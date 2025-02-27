@@ -2,6 +2,7 @@
 ---
 name: Crontab
 scope: source.crontab
+version: 2
 
 file_extensions:
   - tab
@@ -43,7 +44,7 @@ contexts:
     - meta_content_scope:
         meta.string.cron-expression.crontab
         meta.sequence.cron.minute.crontab
-    - include: pop-nl
+    - include: pop-illegal-eol
     - include: illegal-punctuation
     - include: cron-common
     - match: \b{{minute}}(-){{minute}}\b
@@ -58,7 +59,7 @@ contexts:
 
   cron-hour-is-next:
     - meta_content_scope: meta.string.cron-expression.crontab
-    - include: pop-nl
+    - include: pop-illegal-eol
     - include: cron-initial-comma
     - match: (?=\S)
       set: cron-hour
@@ -67,7 +68,7 @@ contexts:
     - meta_content_scope:
         meta.string.cron-expression.crontab
         meta.sequence.cron.hour.crontab
-    - include: pop-nl
+    - include: pop-illegal-eol
     - include: illegal-punctuation
     - include: cron-common
     - match: \b{{hour}}(-){{hour}}\b
@@ -82,7 +83,7 @@ contexts:
 
   cron-day-of-month-is-next:
     - meta_content_scope: meta.string.cron-expression.crontab
-    - include: pop-nl
+    - include: pop-illegal-eol
     - include: cron-initial-comma
     - match: (?=\S)
       set: cron-day-of-month
@@ -91,7 +92,7 @@ contexts:
     - meta_content_scope:
         meta.string.cron-expression.crontab
         meta.sequence.cron.day-of-month.crontab
-    - include: pop-nl
+    - include: pop-illegal-eol
     - include: illegal-punctuation
     - include: cron-common
     - match: \b{{day_of_month}}(-){{day_of_month}}\b
@@ -110,7 +111,7 @@ contexts:
 
   cron-month-is-next:
     - meta_content_scope: meta.string.cron-expression.crontab
-    - include: pop-nl
+    - include: pop-illegal-eol
     - include: cron-initial-comma
     - match: (?=\S)
       set: cron-month
@@ -119,7 +120,7 @@ contexts:
     - meta_content_scope:
         meta.string.cron-expression.crontab
         meta.sequence.cron.month.crontab
-    - include: pop-nl
+    - include: pop-illegal-eol
     - include: illegal-punctuation
     - include: cron-common
     - match: \b{{month}}(-){{month}}\b
@@ -142,7 +143,7 @@ contexts:
 
   cron-day-of-week-is-next:
     - meta_content_scope: meta.string.cron-expression.crontab
-    - include: pop-nl
+    - include: pop-illegal-eol
     - include: cron-initial-comma
     - match: (?=\S)
       set: cron-day-of-week
@@ -151,7 +152,7 @@ contexts:
     - meta_content_scope:
         meta.string.cron-expression.crontab
         meta.sequence.cron.day-of-week.crontab
-    - include: pop-nl
+    - include: pop-illegal-eol
     - include: illegal-punctuation
     - include: cron-common
     - match: \b{{day_of_week}}(-){{day_of_week}}\b
@@ -177,10 +178,20 @@ contexts:
     - include: illegal-non-alpha
 
   command-is-next:
-    - include: pop-nl
+    - include: pop-eol
     - match: \s+
-      embed: scope:source.shell
-      escape: (?=\n|$)
+      embed: scope:source.shell.bash.crontab
+      escape: (?=$|(?<!\\)%)
+    - match: (?=%)
+      set: command-stdin
+
+  command-stdin:
+    - meta_content_scope: meta.string.stdin.crontab string.unquoted.crontab
+    - include: pop-eol
+    - match: \\%
+      scope: constant.character.escape.crontab
+    - match: '%'
+      scope: constant.character.newline.crontab
 
   at-syntax:
     # Keyword, then script embed
@@ -188,8 +199,8 @@ contexts:
       captures:
         1: constant.language.schedule.crontab
         2: punctuation.definition.variable.crontab
-      embed: scope:source.shell
-      escape: $
+      embed: scope:source.shell.bash.crontab
+      escape: (?=$)
     # Don't unhighlight keywords just because EOL
     - match: ^\s*((@){{keywords}})\b
       captures:
@@ -200,6 +211,43 @@ contexts:
       captures:
         1: punctuation.definition.variable.crontab
         2: meta.completion.at.crontab
+
+###[ ENVIRONMENT VARIABLES ]###################################################
+
+  variables:
+    - match: ^([a-zA-Z0-9_]+)\s*(=)
+      captures:
+        1: variable.other.readwrite.crontab
+        2: keyword.operator.assignment.crontab
+      push: variable-value
+
+  variable-value:
+    - include: pop-eol
+    - match: '"'
+      scope: punctuation.definition.string.begin.crontab
+      set: string-body-double
+    - match: "'"
+      scope: punctuation.definition.string.begin.crontab
+      set: string-body-single
+    - match: \S
+      push: string-body-unquoted
+
+  string-body-double:
+    - meta_scope: meta.string.crontab string.quoted.double.crontab
+    - match: '"'
+      scope: punctuation.definition.string.end.crontab
+      pop: 1
+
+  string-body-single:
+    - meta_scope: meta.string.crontab string.quoted.single.crontab
+    - match: "'"
+      scope: punctuation.definition.string.end.crontab
+      pop: 1
+
+  string-body-unquoted:
+    - meta_scope: meta.string.crontab string.unquoted.crontab
+    - match: (?=\s*$)
+      pop: 1
 
 ###[ MISCELLANEOUS ]###########################################################
 
@@ -212,37 +260,8 @@ contexts:
       scope: punctuation.definition.comment.crontab
       push:
         - meta_scope: comment.line.number-sign.crontab
-        - include: pop-nl
-    - include: pop-nl
-
-  variables:
-    - match: ^([a-zA-Z0-9_]+)\s*(=)
-      captures:
-        1: variable.other.readwrite.crontab
-        2: keyword.operator.assignment.crontab
-      push: variable-value
-
-  variable-value:
-    - include: pop-nl
-    - match: '"'
-      scope: punctuation.definition.string.begin.crontab
-      set:
-        - meta_scope: string.quoted.double.crontab
-        - match: '"'
-          scope: punctuation.definition.string.end.crontab
-          pop: true
-    - match: "'"
-      scope: punctuation.definition.string.begin.crontab
-      set:
-        - meta_scope: string.quoted.single.crontab
-        - match: "'"
-          scope: punctuation.definition.string.end.crontab
-          pop: true
-    - match: \S
-      push:
-        - meta_scope: string.unquoted.crontab
-        - match: (?=\s*$)
-          pop: true
+        - include: pop-eol
+    - include: pop-eol
 
   illegal-punctuation:
     - match: \*{2,}|[/,?-]{2,}|,(?=[ \t])
@@ -258,9 +277,14 @@ contexts:
 
 ###[ PROTOTYPE ]###############################################################
 
-  pop-nl:
+  pop-eol:
     - match: $\n?
-      pop: true
+      pop: 1
+
+  pop-illegal-eol:
+    - match: $\n?
+      scope: invalid.illegal.crontab
+      pop: 1
 
 ###############################################################################
 
